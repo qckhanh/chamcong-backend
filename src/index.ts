@@ -10,8 +10,8 @@ app.use(express.json());
 app.use(cors());
 
 // Biến lưu trữ API_KEY và SESSION_ID
-let API_KEY: string | null = "3a4f42536960e3f1406add9c81933ad9135d106e";
-let SESSION_ID: string | null = "3ce850d2348c6ada442bb0a841b779de165caf79";
+let API_KEY: string | null = "";
+let SESSION_ID: string | null = "";
 
 // Cache cho endpoint /history
 const historyCache = new Map<string, { data: any; timestamp: number }>();
