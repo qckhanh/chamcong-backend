@@ -1,7 +1,9 @@
-import express, { Request, Response } from 'express';
+import express, {Request, Response} from 'express';
 import axios from 'axios';
 import cors from 'cors';
-
+import multer from 'multer';
+import convert from "heic-convert";
+// Khởi tạo express app
 const app = express();
 const port = 3001;
 
@@ -9,10 +11,33 @@ const port = 3001;
 app.use(express.json());
 app.use(cors());
 
+// Cấu hình multer để xử lý file upload
+const upload = multer({storage: multer.memoryStorage()});
+
 // Cache cho endpoint /history và /my-info
 const historyCache = new Map<string, { data: any; timestamp: number }>();
 const myinfoCache = new Map<string, { data: any; timestamp: number }>();
 const TTL = 5 * 60 * 1000; // 5 phút (TTL tính bằng milliseconds)
+
+// Hàm convert image buffer sang base64 (hỗ trợ JPG, JPEG, HEIC)
+const imageToBase64 = async (file: Express.Multer.File): Promise<string> => {
+    try {
+        let buffer = file.buffer;
+        // Nếu là HEIC, convert sang JPEG trước
+        if (file.mimetype === 'image/heic') {
+            console.log('Converting HEIC to JPEG');
+            buffer = await convert({
+                buffer: file.buffer,
+                format: 'JPEG',
+                quality: 1
+            });
+        }
+        return buffer.toString('base64');
+    } catch (err: any) {
+        console.error('ERROR in imageToBase64:', err.message);
+        throw new Error('Failed to convert image to base64');
+    }
+};
 
 // Hàm tạo headers với apiKey và sessionId từ request headers
 const getHeaders = (req: Request) => {
@@ -20,7 +45,7 @@ const getHeaders = (req: Request) => {
     const sessionId = req.headers['session-id'] as string;
 
     if (!apiKey || !sessionId) {
-        console.log('ERROR: Missing apiKey or sessionId in headers', { apiKey, sessionId });
+        console.log('ERROR: Missing apiKey or sessionId in headers', {apiKey, sessionId});
         throw new Error('apiKey and sessionId headers are required');
     }
 
@@ -38,24 +63,31 @@ const getHeaders = (req: Request) => {
 
 // Endpoint 1: GET / (for testing)
 app.get('/', (req: Request, res: Response) => {
-    res.status(200).json({ message: 'Hello World' });
+    res.status(200).json({message: 'Hello World'});
 });
 
 // Endpoint 2: POST /check-in
-// Request body: { image: string (base64) }
+// Request body: multipart/form-data with 'image' field (JPG, JPEG, HEIC)
 // Headers: api-key, session-id
-app.post('/check-in', async (req: Request, res: Response) => {
+app.post('/check-in', upload.single('image'), async (req: Request, res: Response) => {
     try {
         const header = getHeaders(req);
-        const { image } = req.body;
-        if (!image) {
-            console.log('ERROR: Missing image in /check-in request');
-            return res.status(400).json({ error: 'Image base64 is required' });
+        if (!req.file) {
+            console.log('ERROR: Missing image file in /check-in request');
+            return res.status(400).json({error: 'Image file is required'});
         }
 
+        // Validate file type
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/heic'];
+        if (!allowedTypes.includes(req.file.mimetype)) {
+            console.log('ERROR: Unsupported image format', {mimetype: req.file.mimetype});
+            return res.status(400).json({error: 'Only JPG, JPEG, and HEIC formats are supported'});
+        }
+
+        const base64Image = await imageToBase64(req.file);
         const URL = "https://odoo.entrade.com.vn/hr/check_in";
-        const body = { params: { image } };
-        const response = await axios.post(URL, body, { headers: header });
+        const body = {params: {image: base64Image}};
+        const response = await axios.post(URL, body, {headers: header});
 
         // Xóa cache sau khi check-in thành công
         console.log('Clearing caches due to successful check-in');
@@ -65,7 +97,7 @@ app.post('/check-in', async (req: Request, res: Response) => {
         res.status(response.status).json(response.data);
     } catch (err: any) {
         console.error('ERROR in /check-in:', err.message);
-        res.status(err.message.includes('headers are required') ? 400 : 500).json({ error: err.message });
+        res.status(err.message.includes('headers are required') || err.message.includes('image') ? 400 : 500).json({error: err.message});
     }
 });
 
@@ -75,10 +107,10 @@ app.post('/check-in', async (req: Request, res: Response) => {
 app.get('/history', async (req: Request, res: Response) => {
     try {
         const header = getHeaders(req);
-        const { month, year } = req.query;
+        const {month, year} = req.query;
         if (!month || !year) {
             console.log('ERROR: Missing month or year in /history query params');
-            return res.status(400).json({ error: 'Month and year are required' });
+            return res.status(400).json({error: 'Month and year are required'});
         }
 
         const cacheKey = `${month}-${year}-${header.apikey}`;
@@ -97,7 +129,7 @@ app.get('/history', async (req: Request, res: Response) => {
                 year: parseInt(year as string),
             }
         };
-        const response = await axios.post(URL, body, { headers: header });
+        const response = await axios.post(URL, body, {headers: header});
 
         historyCache.set(cacheKey, {
             data: response.data,
@@ -108,7 +140,7 @@ app.get('/history', async (req: Request, res: Response) => {
         res.status(response.status).json(response.data);
     } catch (err: any) {
         console.error('ERROR in /history:', err.message);
-        res.status(err.message.includes('headers are required') ? 400 : 500).json({ error: err.message });
+        res.status(err.message.includes('headers are required') ? 400 : 500).json({error: err.message});
     }
 });
 
@@ -127,7 +159,7 @@ app.get('/my-info', async (req: Request, res: Response) => {
         console.log('My-info cache miss or expired');
 
         const URL = "https://odoo.entrade.com.vn/hr/get_employee_infor";
-        const response = await axios.post(URL, {}, { headers: header });
+        const response = await axios.post(URL, {}, {headers: header});
 
         myinfoCache.set(cacheKey, {
             data: response.data,
@@ -138,7 +170,7 @@ app.get('/my-info', async (req: Request, res: Response) => {
         res.status(response.status).json(response.data);
     } catch (err: any) {
         console.error('ERROR in /my-info:', err.message);
-        res.status(err.message.includes('headers are required') ? 400 : 500).json({ error: err.message });
+        res.status(err.message.includes('headers are required') ? 400 : 500).json({error: err.message});
     }
 });
 
