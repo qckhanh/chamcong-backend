@@ -4,16 +4,23 @@
   "description": "",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "start": "concurrently \"node dist/index.js\" \"ngrok http --url=marvella-autokinetic-farreachingly.ngrok-free.dev 3001\""
   },
   "dependencies": {
     "axios": "^1.12.2",
     "cors": "^2.8.5",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "heic-convert": "^2.1.0",
+    "multer": "^2.0.2"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
+    "@types/heic-convert": "^2.1.0",
+    "@types/multer": "^2.0.0",
+    "concurrently": "^9.2.1",
     "typescript": "^5.5.3"
   },
   "private": true
