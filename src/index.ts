@@ -176,5 +176,5 @@ app.get('/my-info', async (req: Request, res: Response) => {
 
 // Khởi động server
 app.listen(port, () => {
-    console.log(`Server running at https://localhost:${port}`);
+    console.log(`Server running at xxxx https://localhost:${port}`);
 });
